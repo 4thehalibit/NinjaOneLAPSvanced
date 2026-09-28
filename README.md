@@ -53,6 +53,15 @@ Change log example:
 The script (running as **SYSTEM**) needs write access to all of the
 fields above. Field names can be changed at the top of the script.
 
+> **Note on Conditions.** The Automation permission column above only
+> covers what the *script* needs. If you want to build a NinjaOne
+> Condition (alert) on any of these fields &mdash; e.g. a "checked"
+> condition on `LAPSunauthorizedAdminsFound` &mdash; that field's
+> Automation permission must include **Read**, not just Write. A
+> Write-only field will not appear in the Condition field picker even
+> though the script itself only ever writes to it. This is separate
+> from the field's Technician (portal) permission.
+
 ### Recommended custom field setup
 
 The data fields are recommended to be setup in a dedicated card at the desired device type/role.
