@@ -1202,7 +1202,10 @@ function Invoke-LapsRotation {
         # Persist credentials to NinjaOne custom fields ONLY after the
         # local account changes have succeeded.
         Write-LapsCustomField -Name $CF_LapsUsername -Value $TargetUser
-        Write-LapsCustomField -Name $CF_LapsPassword -Value $newPassword
+        # Send the password via stdin (-Piped). Without it, Ninja-Property-Set passes the
+        # value to ninjarmm-cli.exe as a command-line argument, where EDR and process
+        # creation logging can record it in plain text.
+        Write-LapsCustomField -Name $CF_LapsPassword -Value $newPassword -Piped
 
         Write-AuditLog -Severity SECURITY -Message "Password rotation for '$TargetUser' completed and stored in NinjaOne."
         Add-ChangelogEntry -Category 'PasswordRotation' -Message ("Rotated LAPS password for local user '{0}'." -f $TargetUser)
