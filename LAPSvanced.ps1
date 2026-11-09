@@ -2289,10 +2289,12 @@ $exitCode = 0
 try {
     # Domain controllers have no local accounts: New-LocalUser / Add-LocalGroupMember would act on
     # the domain instead (creating domain users, then failing on the missing local Administrators
-    # group). DomainRole 4 = backup DC, 5 = primary DC. Exit before changing anything.
-    $domainRole = (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).DomainRole
-    if ($domainRole -ge 4) {
-        Write-AuditLog -Severity WARN -Message "Domain controller detected (DomainRole $domainRole). LAPS rotation and local admin cleanup do not apply here; exiting without changes."
+    # group). DomainRole 4 = backup DC, 5 = primary DC. ProductType 2 = domain controller of any
+    # kind (including read-only). Exit before changing anything.
+    $domainRole  = (Get-CimInstance -ClassName Win32_ComputerSystem  -ErrorAction Stop).DomainRole
+    $productType = (Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop).ProductType
+    if ($domainRole -ge 4 -or $productType -eq 2) {
+        Write-AuditLog -Severity WARN -Message "Domain controller detected (DomainRole $domainRole, ProductType $productType). LAPS rotation and local admin cleanup do not apply here; exiting without changes."
         exit 0
     }
 
