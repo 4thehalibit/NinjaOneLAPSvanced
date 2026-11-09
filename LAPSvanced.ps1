@@ -2287,6 +2287,15 @@ Initialize-AuditLog
 
 $exitCode = 0
 try {
+    # Domain controllers have no local accounts: New-LocalUser / Add-LocalGroupMember would act on
+    # the domain instead (creating domain users, then failing on the missing local Administrators
+    # group). DomainRole 4 = backup DC, 5 = primary DC. Exit before changing anything.
+    $domainRole = (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).DomainRole
+    if ($domainRole -ge 4) {
+        Write-AuditLog -Severity WARN -Message "Domain controller detected (DomainRole $domainRole). LAPS rotation and local admin cleanup do not apply here; exiting without changes."
+        exit 0
+    }
+
     $runMode            = Resolve-RunMode             -Value $Mode
     $removalScope       = Resolve-RemovalScope        -ScopeValue $RemoveUnauthorizedAdminsScope
     $eligibleScopes     = Get-EligibleRemovalScopes   -RemovalScope $removalScope
