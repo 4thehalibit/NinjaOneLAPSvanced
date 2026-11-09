@@ -44,7 +44,7 @@ You want a `stdin` row only. Do not add the `CommandLine` column to the output, 
 
 **Impact.** The password is never stored, because the custom field is written only after the account changes succeed. The crash also happens before the built-in Administrator is disabled. With the `Local and Domain` removal scope, the cleanup step would have tried to remove unauthorized domain accounts from the domain controller's Administrators group if the script had not crashed first.
 
-**Fix.** Check `Win32_ComputerSystem.DomainRole` at the start of `Main` and exit with a warning and code 0 on a domain controller (role 4 or 5), before anything is changed. Branch [`fix/laps-skip-domain-controllers`](https://github.com/4thehalibit/NinjaOneLAPSvanced/tree/fix/laps-skip-domain-controllers), commit [`8f722e8`](https://github.com/4thehalibit/NinjaOneLAPSvanced/commit/8f722e8).
+**Fix.** Check `Win32_ComputerSystem.DomainRole` (4 = backup, 5 = primary) and `Win32_OperatingSystem.ProductType` (2 = domain controller of any kind) at the start of `Main`, and exit with a warning and code 0 on a domain controller before anything is changed. Branch [`fix/laps-skip-domain-controllers`](https://github.com/4thehalibit/NinjaOneLAPSvanced/tree/fix/laps-skip-domain-controllers), commits [`8f722e8`](https://github.com/4thehalibit/NinjaOneLAPSvanced/commit/8f722e8) and [`d526963`](https://github.com/4thehalibit/NinjaOneLAPSvanced/commit/d526963).
 
 **Cleanup if it already happened.**
 1. Find the accounts: the managed account name, a description of `Managed by NinjaOne LAPS`, and a creation time matching the run.
