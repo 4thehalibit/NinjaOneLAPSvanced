@@ -9,6 +9,50 @@ report and a changelog. Additionally a full audit log is written to the machine.
 >Depending on the configuration you might accidentally lockout legitimate users which were aded to the Administrators group by mistake!
 
 
+## Fork notes: security findings and fixes
+
+This fork carries two fixes that are not in the upstream repository. Upstream has Issues, Discussions, private vulnerability reporting and pull requests from non-collaborators turned off, so the changes are published here as small, separate branches that can be cherry-picked.
+
+### 1. The rotated password was visible on a process command line
+
+**Cause.** `Invoke-LapsRotation` wrote the password with `Write-LapsCustomField -Name $CF_LapsPassword -Value $newPassword` and no `-Piped` switch. Without it, `Ninja-Property-Set` starts `ninjarmm-cli.exe` with the value as a command-line argument.
+
+**Impact.** EDR products and Windows process-creation logging (event 4688 with command-line auditing, Sysmon) record command lines in plain text. Anyone who can read those logs can read the current local administrator password of any device the script has run on, and every rotation adds another logged password.
+
+**Fix.** Add `-Piped` to that call, as the script already does for the report field, so the value is sent on stdin. Branch [`fix/laps-password-via-stdin`](https://github.com/4thehalibit/NinjaOneLAPSvanced/tree/fix/laps-password-via-stdin), commit [`3c76ab4`](https://github.com/4thehalibit/NinjaOneLAPSvanced/commit/3c76ab4). The rest of the script passes the password only as a secure string to `New-LocalUser` and `Set-LocalUser`. It has no `net user`, `cmd /c` or `Start-Process` calls.
+
+**Verify.** Search process-creation telemetry for `ninjarmm-cli.exe` command lines that mention `LAPSpw` and check that they use `--stdin`. Example for CrowdStrike NG-SIEM, with the time range starting after the fixed script was deployed:
+
+```
+#event_simpleName=ProcessRollup2 ImageFileName=/ninjarmm-cli\.exe$/i CommandLine=/LAPSpw/i
+| case { CommandLine=/--stdin/i | method := "stdin" ; * | method := "ARGUMENT" }
+| groupBy([method], function=[count(as=events), count(ComputerName, distinct=true, as=hosts)])
+```
+
+You want a `stdin` row only. Do not add the `CommandLine` column to the output, because events from before the fix contain real passwords.
+
+**Remediation.** After updating, run a full rotation on every device. Passwords rotated by earlier versions may still be in log retention and stay valid until the account is rotated. Also review other automation for secrets passed as arguments.
+
+### 2. Running the script on a domain controller creates domain accounts
+
+**Cause.** A domain controller has no local account database. `New-LocalUser` and `Add-LocalGroupMember` act on the domain instead, so the managed account is created as an enabled domain user. The step that follows then fails with `Group Administrators was not found`, because a domain controller has no local *Administrators* group.
+
+**Symptoms.**
+- An enabled domain user named after the managed account (`LAPSadmin` by default), with no group membership and no recorded password.
+- When two domain controllers run at the same moment, the two creations collide when they replicate and one account is renamed `$DUPLICATE-xxxx`.
+- Activity output ending in `Group Administrators was not found` and a non-zero exit code.
+
+**Impact.** The password is never stored, because the custom field is written only after the account changes succeed. The crash also happens before the built-in Administrator is disabled. With the `Local and Domain` removal scope, the cleanup step would have tried to remove unauthorized domain accounts from the domain controller's Administrators group if the script had not crashed first.
+
+**Fix.** Check `Win32_ComputerSystem.DomainRole` at the start of `Main` and exit with a warning and code 0 on a domain controller (role 4 or 5), before anything is changed. Branch [`fix/laps-skip-domain-controllers`](https://github.com/4thehalibit/NinjaOneLAPSvanced/tree/fix/laps-skip-domain-controllers), commit [`8f722e8`](https://github.com/4thehalibit/NinjaOneLAPSvanced/commit/8f722e8).
+
+**Cleanup if it already happened.**
+1. Find the accounts: the managed account name, a description of `Managed by NinjaOne LAPS`, and a creation time matching the run.
+2. Confirm they have no group memberships, then disable them and delete them.
+3. Confirm the built-in Administrator is unchanged (no account-disabled events, 4725, on the domain controllers) and that the domain controller's Administrators group is intact.
+
+**Recommendation.** Do not target domain controllers at all, for example with a device group used as an exclusion. The check is a safety net, not a substitute. A report-only run (`Mode = Report`, removal scope `Disabled`) creates and removes nothing, but it still fails on a domain controller for the same reason.
+
 ## What the script does
 
 `LAPSvanced.ps1` performs three tasks every time it runs:
